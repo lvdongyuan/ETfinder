@@ -7,10 +7,20 @@ It integrates SSB C-terminal–guided compatibility filtering, phylogeny-aware c
 
 # 1. Installation
 
-## 1.1 Clone the repository
+## 1.1 RecTdb Availability (Large Dataset Notice)
+
+GitHub does not permit hosting files larger than 100 MB.
+The full RecTdb dataset (>25,000 RecT–SSB pairs; ~147 MB) therefore cannot be included in this repository.
+
+To obtain the complete ETfinder package including RecTdb, please download the archived release from Zenodo:
+
+👉 Zenodo (full ETfinder package, including RecTdb):
+
+After downloading and extracting the ZIP:
 
 ```bash
-git clone https://github.com/lvdongyuan/ETfinder.git
+wget https://zenodo.org/record/17866585/files/ETfinder.zip -O ETfinder.zip
+unzip ETfinder.zip
 cd ETfinder
 ```
 
@@ -93,7 +103,7 @@ ETE3 will automatically detect and use this offline database.
 ## 5.1 Offline web interface
 
 ```bash
-python server/server.py
+python server.py
 ```
 
 Open in your browser:
@@ -110,16 +120,6 @@ Features:
 - Export of CSV / JSON / Newick trees  
 
 Runs fully offline.
-
----
-
-## 5.2 Running modules individually (optional)
-
-```bash
-python M1_ssb_search/ssbc7_search.py
-python M2_context_tree/M2_taxontree.py
-python M3_scoring/recT_scoring_new.py
-```
 
 ---
 
@@ -147,7 +147,6 @@ RecTdb includes:
 - SSB-C-terminal motifs  
 - Host taxonomy  
 - Optional genomic context annotations  
-
 ---
 
 # 8. Citation
