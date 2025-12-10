@@ -1,0 +1,422 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Newick 查看器 · 横向拉宽 + 整体缩放</title>
+<style>
+  :root{
+    --bg:#0f172a; --fg:#cfd6e4; --muted:#9aa3b2;
+    --card:#111827; --card-border:#2b3443;
+    --accent:#7dd3fc;                 /* 搜索高亮（青色） */
+    --select:#facc15;                 /* 选中高亮（黄色） */
+    --branch:#9fb1c7; --label:#cfd6e4;
+    --font-size:12px; --stroke:1.2px;
+  }
+  html,body{height:100%}
+  body{margin:0;background:var(--bg);color:var(--fg);font:14px/1.3 system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,'Noto Sans',sans-serif}
+  .wrap{max-width:1200px;margin:0 auto;padding:18px}
+  h1{margin:0 0 12px;font-size:20px}
+  .grid{display:grid;grid-template-columns:360px 1fr;gap:16px}
+  .card{background:var(--card);border:1px solid var(--card-border);border-radius:14px;padding:12px}
+  .controls{display:grid;gap:10px}
+  .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+  .row>label{min-width:116px;color:var(--muted)}
+  .row input[type="text"], .row input[type="url"]{flex:1;min-width:180px;padding:6px 8px;border:1px solid var(--card-border);border-radius:10px;background:#0b1220;color:var(--fg)}
+  textarea{width:100%;min-height:120px;padding:8px;border-radius:10px;border:1px solid var(--card-border);background:#0b1220;color:var(--fg);resize:vertical}
+  .btn{padding:6px 10px;border-radius:10px;border:1px solid var(--card-border);background:#131c2a;color:var(--fg);cursor:pointer}
+  .btn:hover{background:#182233}
+  .btn.tonal{background:#0b1220}
+  .hint{color:var(--muted);font-size:12px}
+  .viewer-card{display:grid;grid-template-rows:auto 1fr;gap:10px}
+  .viewer-head{display:flex;align-items:center;justify-content:space-between;gap:10px}
+  .viewer-actions{display:flex;gap:8px;flex-wrap:wrap}
+  .tree-box{height:620px;overflow:auto;background:#0b1220;border-radius:10px;padding:8px}
+  svg{display:block}
+  .branch{stroke:var(--branch);stroke-width:var(--stroke);fill:none;stroke-linecap:round}
+  .tree-label{font:var(--font-size)/1.2 ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;fill:var(--label);cursor:pointer}
+  .node-hit{fill:transparent;cursor:pointer}
+  .hl{fill:var(--accent)}
+  .tree-label.sel{
+    fill: var(--select);
+    paint-order: stroke;
+    stroke: rgba(0,0,0,.35);
+    stroke-width: 0.9px;
+    font-weight:700;
+  }
+  .sep{height:1px;background:#223040;margin:8px 0}
+  .badge{font-size:12px;padding:2px 6px;border:1px solid var(--card-border);border-radius:999px;background:#0b1220;color:var(--muted)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Newick 查看器 <span class="badge">横向拉宽 + 整体缩放 · 水平直线</span></h1>
+
+  <div class="grid">
+    <div class="card controls">
+      <div class="row">
+        <label>从 URL 加载</label>
+        <input id="url" type="url" placeholder="/files/tree/ssap_tree/protein_tree.rep-only.labeled.nwk">
+        <button class="btn" id="btn-load-url">加载</button>
+      </div>
+      <div class="row">
+        <label>或本地文件</label>
+        <input id="file" type="file" accept=".nwk,.newick,.tree,.txt">
+        <button class="btn tonal" id="btn-load-file">读取</button>
+      </div>
+      <div>
+        <div class="row" style="justify-content:space-between;">
+          <label>或直接粘贴</label>
+          <button class="btn tonal" id="btn-render-text">渲染</button>
+        </div>
+        <textarea id="paste" placeholder="(A:0.1,(B:0.2,C:0.3):0.1);"></textarea>
+      </div>
+
+      <div class="sep"></div>
+      <div class="row">
+        <label>搜索节点</label>
+        <input id="q" type="text" placeholder="关键字 / 正则">
+        <button class="btn tonal" id="btn-search">高亮</button>
+        <button class="btn tonal" id="btn-clear">清除</button>
+      </div>
+
+      <div class="sep"></div>
+      <!-- 新：横向拉宽（改变单位枝长的像素） -->
+      <div class="row">
+        <label>横向拉宽</label>
+        <input id="width" type="range" min="200" max="3000" step="50" value="900">
+        <span class="hint" id="width-val">900 px/单位距离</span>
+      </div>
+      <!-- 新：整体缩放（等比缩放整棵树） -->
+      <div class="row">
+        <label>整体缩放</label>
+        <input id="zoom" type="range" min="50" max="300" step="5" value="100">
+        <span class="hint" id="zoom-val">100%</span>
+      </div>
+
+      <div class="row">
+        <label>字体</label>
+        <input id="font" type="range" min="10" max="18" step="1" value="12">
+        <span class="hint" id="font-val">12</span>
+      </div>
+      <div class="row">
+        <label>线宽</label>
+        <input id="stroke" type="range" min="0.6" max="3" step="0.1" value="1.2">
+        <span class="hint" id="stroke-val">1.2</span>
+      </div>
+
+      <div class="sep"></div>
+      <div class="row">
+        <label>导出</label>
+        <button class="btn" id="btn-export-svg">保存 SVG</button>
+        <button class="btn" id="btn-export-png">保存 PNG</button>
+      </div>
+
+      <p class="hint">说明：<b>横向拉宽</b>只改变枝长映射（更“宽”或更“紧”）；<b>整体缩放</b>等比放大/缩小整棵树。点击节点文字或节点点位可切换黄色选中，搜索命中为青色。</p>
+    </div>
+
+    <div class="card viewer-card">
+      <div class="viewer-head">
+        <div>
+          <strong>树视图</strong>
+          <span class="hint" id="meta"></span>
+        </div>
+        <div class="viewer-actions">
+          <button class="btn" id="btn-fit">Fit</button>
+          <button class="btn" id="btn-reset">重置样式</button>
+        </div>
+      </div>
+      <div id="tree" class="tree-box"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+/* ---------------- Newick 解析 ---------------- */
+function parseNewick(s){
+  s = String(s||'').trim(); if(!/;\s*$/.test(s)) s+=';';
+  let i=0, ch=()=>s[i], next=()=>s[i++]; function skip(){ while(/\s/.test(ch())) i++; }
+  function readBracket(){ if(ch()!='[') throw Error('expect ['); next(); let buf='',q=false;
+    while(i<s.length){ const c=next(); if(c=="'"){ q=!q; buf+=c; continue; } if(!q && c==']') break; buf+=c; } return buf; }
+  function readNum(){ skip(); let t=''; while(/[0-9eE\.\+\-]/.test(ch())) t+=next(); const v=parseFloat(t); return isFinite(v)?v:0; }
+  function readLabelAndAnnos(){ skip(); let label='', annos=[], q=false;
+    while(i<s.length){ const c=ch(); if(c=="'"){ q=!q; label+=next(); continue; }
+      if(!q && (c==':'||c==','||c==')'||c=='('||c==';'||c=='[')){ if(c=='['){ const blk=readBracket(); if(blk[0]=='&'){ annos.push(blk); continue; } else { label+='['+blk+']'; continue; } } break; }
+      label+=next(); }
+    skip(); while(ch()=='['){ const blk=readBracket(); if(blk[0]=='&') annos.push(blk); skip(); }
+    return [label.trim(), annos];
+  }
+  const node=()=>({name:'',length:0,children:[],parent:null,_x:0,_y:0});
+  if(ch()!='(') throw Error('Newick must start with ('); next();
+  const stack=[], root=node(); let cur=root;
+  function addChild(n){ n.parent=cur; cur.children.push(n); }
+  while(i<s.length){
+    skip(); const c=ch();
+    if(c=='('){ const n=node(); addChild(n); stack.push(cur); cur=n; next(); }
+    else if(c==','){ next(); }
+    else if(c==')'){ next(); skip();
+      if(ch() && ch()!=':' && ch()!=',' && ch()!=')' && ch()!=';'){ const [nm,ann]=readLabelAndAnnos(); cur.name=nm; cur.annos=ann; }
+      if(ch()==':'){ next(); cur.length=readNum(); }
+      cur=stack.pop()||cur;
+    }
+    else if(c==';'){ break; }
+    else{ const [nm,ann]=readLabelAndAnnos(); const leaf=node(); leaf.name=nm; leaf.annos=ann; if(ch()==':'){ next(); leaf.length=readNum(); } addChild(leaf); }
+  }
+  const real = root.children.length===1 ? (root.children[0].parent=null, root.children[0]) : root;
+  return real;
+}
+function extractAnno(label){ if(!label) return ''; const m=label.match(/\[\&[^]*?\]/g); if(!m) return ''; return m.map(s=>s.replace(/^\[\&\??/,'').replace(/\]$/,'')).join(' | '); }
+function cleanLabel(label){ return (label||'').replace(/\[\&[^]*?\]/g,'').trim(); }
+
+/* ---------------- 布局 ---------------- */
+function layoutPhylo(root, opts){
+  const fontPx = parseInt(getComputedStyle(document.documentElement).getPropertyValue('--font-size'))||12;
+  const rowH = Math.max(12, Math.round(fontPx * 1.6));  // 行距跟随字体
+  const margin = opts.margin || {top:10,bottom:10,left:10,right:10};
+
+  const leaves=[]; (function collect(n){ if(!n.children.length){ leaves.push(n); return;} n.children.forEach(collect); })(root);
+  leaves.forEach((n,i)=> n._y = margin.top + i*rowH);
+  (function setY(n){ if(n.children.length){ n.children.forEach(setY); const ys=n.children.map(c=>c._y); n._y=(Math.min(...ys)+Math.max(...ys))/2; } })(root);
+
+  function maxDepth(n, acc){ const here=acc+(n.length||0); if(!n.children.length) return here; return Math.max(...n.children.map(c=>maxDepth(c,here))); }
+  const maxLen = Math.max(1e-6, maxDepth(root,0));
+  return {leaves,maxLen,rowH,margin};
+}
+
+/* ---------------- 渲染（横向拉宽 + 整体缩放） ---------------- */
+let __SEL = null; // 当前选中节点
+function renderPhylo(container, root, state, opts={}){
+  const leftPad   = opts.leftPad   ?? 12;
+  const labelPad  = opts.labelPad  ?? 6;
+  const zoom      = Math.max(0.1, opts.zoom ?? 1);
+  const pxPerUnit = Math.max(10, opts.pxPerUnit ?? 900);  // 横向拉宽核心
+
+  // 估算右边留白（按最长标签长度）
+  const fontPx = parseInt(getComputedStyle(document.documentElement).getPropertyValue('--font-size'))||12;
+  let maxLabelChars = 0;
+  (function scan(n){ if(!n.children.length){ const t=cleanLabel(n.name)||''; maxLabelChars=Math.max(maxLabelChars, t.length); } n.children.forEach(scan); })(root);
+  const rightPad = Math.max(opts.rightPad ?? 240, Math.ceil(fontPx*0.62*maxLabelChars)+24);
+
+  const plotWidth     = Math.max(50, pxPerUnit * state.maxLen); // 横向拉宽体现在这里
+  const contentWidth  = leftPad + plotWidth + rightPad;
+  const contentHeight = Math.max(container.clientHeight, state.margin.top + state.leaves.length*state.rowH + state.margin.bottom);
+
+  container.innerHTML='';
+  const svg = document.createElementNS('http://www.w3.org/2000/svg','svg');
+  // viewBox 定义原始坐标系；width/height 乘以 zoom 达到整体缩放
+  svg.setAttribute('viewBox', `0 0 ${contentWidth} ${contentHeight}`);
+  svg.setAttribute('width',  Math.round(contentWidth  * zoom));
+  svg.setAttribute('height', Math.round(contentHeight * zoom));
+  container.appendChild(svg);
+
+  const scaleX = (x)=> leftPad + plotWidth * (x / state.maxLen);
+
+  function setX(n, acc){ const x=acc+(n.length||0); n._x=scaleX(x); if(n.children.length) n.children.forEach(c=>setX(c,x)); }
+  root._x = leftPad; root.children.forEach(c=>setX(c,0));
+
+  const style = document.createElementNS(svg.namespaceURI,'style');
+  style.textContent = `
+    .branch{ stroke: var(--branch,#9fb1c7); stroke-width: var(--stroke,1.2px); fill:none; stroke-linecap: round; }
+    .tree-label{ font: var(--font-size,12px)/1.2 ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace; fill: var(--label,#cfd6e4); cursor: pointer; }
+    .node-hit{ fill: transparent; cursor: pointer; }
+    .hl{ fill: var(--accent,#7dd3fc); }
+    .tree-label.sel{ fill: var(--select,#facc15); paint-order:stroke; stroke: rgba(0,0,0,.35); stroke-width:0.9px; font-weight:700; }
+  `;
+  svg.appendChild(style);
+
+  function path(d){ const p=document.createElementNS(svg.namespaceURI,'path'); p.setAttribute('class','branch'); p.setAttribute('d',d); svg.appendChild(p); }
+
+  function draw(n){
+    if(n.children.length){
+      const ys = n.children.map(c=>c._y);
+      path(`M ${n._x} ${Math.min(...ys)} L ${n._x} ${Math.max(...ys)}`);    // 垂直连线
+      n.children.forEach(c=>{ path(`M ${n._x} ${c._y} L ${c._x} ${c._y}`); draw(c); }); // 水平到子
+    }
+
+    // 叶标签
+    if(!n.children.length){
+      const text = cleanLabel(n.name), anno = extractAnno(n.name);
+      const t = document.createElementNS(svg.namespaceURI,'text');
+      t.setAttribute('x', n._x + labelPad); t.setAttribute('y', n._y + 4);
+      t.setAttribute('class','tree-label');
+      if (window.__HL && window.__HL(n)) t.classList.add('hl');
+      if (__SEL === n) t.classList.add('sel');
+      t.textContent = text || '';
+      if(anno){ const tt=document.createElementNS(svg.namespaceURI,'title'); tt.textContent=anno; t.appendChild(tt); }
+      t.addEventListener('click', (ev)=>{
+        ev.stopPropagation();
+        __SEL = (__SEL === n) ? null : n;
+        renderPhylo(container, root, state, opts);
+        const box=container, y=n._y*zoom; const row=20*zoom;
+        if (y < box.scrollTop || y > box.scrollTop + box.clientHeight - row) {
+          box.scrollTop = Math.max(0, y - box.clientHeight/2);
+        }
+      });
+      svg.appendChild(t);
+    }
+
+    // 节点点击热区（切换选中，不折叠）
+    const hit = document.createElementNS(svg.namespaceURI,'rect');
+    hit.setAttribute('x', Math.max(0, n._x-6)); hit.setAttribute('y', n._y-8);
+    hit.setAttribute('width', 16); hit.setAttribute('height', 16);
+    hit.setAttribute('class','node-hit');
+    hit.addEventListener('click', ()=>{
+      __SEL = (__SEL === n) ? null : n;
+      renderPhylo(container, root, state, opts);
+    });
+    svg.appendChild(hit);
+  }
+  draw(root);
+}
+
+/* ---------------- 控制层 ---------------- */
+const TREES = {}; // id -> {root,state,box,opts}
+function renderFromText(id, text){
+  const box=document.getElementById(id); if(!box) throw new Error('container not found: '+id);
+  const root=parseNewick(text);
+  const state=layoutPhylo(root, {margin:{top:10,bottom:10,left:10,right:10}});
+  const zoom = (parseInt(document.getElementById('zoom').value,10)||100)/100;
+  const pxPerUnit = parseInt(document.getElementById('width').value,10) || 900;
+  const opts={ zoom, pxPerUnit };
+  TREES[id]={root,state,box,opts};
+  __SEL = null;
+  renderPhylo(box, root, state, opts);
+  updateMeta();
+}
+function fitTree(id){
+  const t=TREES[id]; if(!t) return;
+  // Fit 只调整 zoom，保持当前 pxPerUnit（横向拉宽）不变
+  const fontPx = parseInt(getComputedStyle(document.documentElement).getPropertyValue('--font-size'))||12;
+  let maxLabelChars = 0;
+  (function scan(n){ if(!n.children.length){ const txt=cleanLabel(n.name)||''; maxLabelChars=Math.max(maxLabelChars, txt.length); } n.children.forEach(scan); })(t.root);
+  const rightPad = Math.max(240, Math.ceil(fontPx*0.62*maxLabelChars)+24);
+  const leftPad = 12;
+  const plotWidth = Math.max(50, (t.opts.pxPerUnit||900) * t.state.maxLen);
+  const contentWidth = leftPad + plotWidth + rightPad;
+  const contentHeight = Math.max(t.box.clientHeight, t.state.margin.top + t.state.leaves.length*t.state.rowH + t.state.margin.bottom);
+
+  const scaleW = (t.box.clientWidth  - 16) / contentWidth;
+  const scaleH = (t.box.clientHeight - 16) / contentHeight;
+  const z = Math.max(0.1, Math.min(5, Math.min(scaleW, scaleH)));
+
+  t.opts.zoom = z;
+  const slider = document.getElementById('zoom');
+  const pct = Math.round(z*100);
+  slider.value = Math.max(slider.min, Math.min(slider.max, pct));
+  document.getElementById('zoom-val').textContent = pct + '%';
+
+  renderPhylo(t.box, t.root, t.state, t.opts);
+  updateMeta();
+}
+function highlight(id, q){
+  const t=TREES[id]; if(!t) return;
+  if (!q){ window.__HL=null; renderPhylo(t.box,t.root,t.state,t.opts); return; }
+  let rx=null; try{ rx=new RegExp(String(q),'i'); }catch{ rx=null; }
+  window.__HL=(n)=> rx ? rx.test(n.name) : (n.name||'').toLowerCase().includes(String(q).toLowerCase());
+  renderPhylo(t.box,t.root,t.state,t.opts);
+}
+function exportSVG(id, filename='tree.svg'){
+  const t=TREES[id]; if(!t) return; const svg=t.box.querySelector('svg'); if(!svg) return;
+  const xml=new XMLSerializer().serializeToString(svg); const blob=new Blob([xml],{type:'image/svg+xml'});
+  const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=filename; a.click(); URL.revokeObjectURL(a.href);
+}
+function exportPNG(id, filename='tree.png', scale=2){
+  const t=TREES[id]; if(!t) return; const svg=t.box.querySelector('svg'); if(!svg) return;
+  const xml=new XMLSerializer().serializeToString(svg); const img=new Image();
+  const w=svg.viewBox?.baseVal?.width || svg.width.baseVal.value; const h=svg.viewBox?.baseVal?.height || svg.height.baseVal.value;
+  img.onload=()=>{ const c=document.createElement('canvas'); c.width=w*scale; c.height=h*scale;
+    const ctx=c.getContext('2d'); ctx.fillStyle=getComputedStyle(t.box).backgroundColor || '#fff'; ctx.fillRect(0,0,c.width,c.height);
+    ctx.drawImage(img, 0,0, c.width, c.height);
+    c.toBlob(b=>{ const a=document.createElement('a'); a.href=URL.createObjectURL(b); a.download=filename; a.click(); URL.revokeObjectURL(a.href); }, 'image/png');
+  };
+  img.src='data:image/svg+xml;charset=utf-8,'+encodeURIComponent(xml);
+}
+function updateMeta(){
+  const t=TREES['tree']; if(!t) return;
+  const leaves=(function(){ let c=0;(function w(n){ if(!n.children.length){c++;return;} n.children.forEach(w); })(t.root); return c; })();
+  function height(n){ return n.children.length ? 1+Math.max(...n.children.map(height)) : 0; }
+  const pct = Math.round((t.opts.zoom||1)*100);
+  document.getElementById('meta').textContent = ` · 叶: ${leaves} · 高度: ${height(t.root)} · 缩放: ${pct}% · 宽度: ${t.opts.pxPerUnit} px/单位`;
+}
+
+/* ---------------- 交互绑定 ---------------- */
+window.addEventListener('load', ()=>{
+  const demo="(A:0.2,(B:0.3,(C:0.4,D:0.1):0.2):0.1,(E:0.15,F:0.22):0.08);";
+  document.getElementById('paste').value = demo;
+  renderFromText('tree', demo);
+
+  // 加载器
+  document.getElementById('btn-load-url').onclick = async ()=>{
+    const u=document.getElementById('url').value.trim(); if(!u){ alert('请输入 URL'); return; }
+    const txt = await (await fetch(u)).text(); renderFromText('tree', txt);
+  };
+  document.getElementById('btn-load-file').onclick = async ()=>{
+    const f=document.getElementById('file').files[0]; if(!f){ alert('请选择文件'); return; }
+    const txt = await f.text(); renderFromText('tree', txt);
+  };
+  document.getElementById('btn-render-text').onclick = ()=>{
+    const txt=document.getElementById('paste').value; renderFromText('tree', txt);
+  };
+
+  // 搜索/清除
+  document.getElementById('btn-search').onclick = ()=>{ const q=document.getElementById('q').value.trim(); highlight('tree', q); };
+  document.getElementById('btn-clear').onclick  = ()=>{ document.getElementById('q').value=''; highlight('tree', null); };
+
+  // 横向拉宽
+  const width = document.getElementById('width'), widthV=document.getElementById('width-val');
+  width.oninput = ()=>{
+    widthV.textContent = width.value + ' px/单位距离';
+    const t=TREES['tree']; if(!t) return;
+    t.opts.pxPerUnit = parseInt(width.value,10) || 900;
+    renderPhylo(t.box, t.root, t.state, t.opts);
+    updateMeta();
+  };
+
+  // 整体缩放
+  const zoom = document.getElementById('zoom'), zoomV=document.getElementById('zoom-val');
+  zoom.oninput = ()=>{
+    zoomV.textContent = zoom.value + '%';
+    const t=TREES['tree']; if(!t) return;
+    t.opts.zoom = (parseInt(zoom.value,10)||100)/100;
+    renderPhylo(t.box, t.root, t.state, t.opts);
+    updateMeta();
+  };
+
+  // 字体/线宽
+  const font = document.getElementById('font'), fontV=document.getElementById('font-val');
+  font.oninput = ()=>{
+    fontV.textContent = font.value;
+    document.documentElement.style.setProperty('--font-size', font.value+'px');
+    const t=TREES['tree']; if(t){
+      // 字体影响行距、需要重算 Y 布局
+      t.state = layoutPhylo(t.root, {margin:{top:10,bottom:10,left:10,right:10}});
+      renderPhylo(t.box, t.root, t.state, t.opts);
+      updateMeta();
+    }
+  };
+  const stroke = document.getElementById('stroke'), strokeV=document.getElementById('stroke-val');
+  stroke.oninput = ()=>{
+    strokeV.textContent = stroke.value;
+    document.documentElement.style.setProperty('--stroke', stroke.value+'px');
+    const t=TREES['tree']; if(t){ renderPhylo(t.box, t.root, t.state, t.opts); }
+  };
+
+  // 导出 & Fit & Reset
+  document.getElementById('btn-export-svg').onclick = ()=> exportSVG('tree');
+  document.getElementById('btn-export-png').onclick = ()=> exportPNG('tree', 'tree.png', 2);
+  document.getElementById('btn-fit').onclick = ()=> fitTree('tree');
+  document.getElementById('btn-reset').onclick = ()=>{
+    document.documentElement.style.setProperty('--font-size','12px'); font.value=12; fontV.textContent='12';
+    document.documentElement.style.setProperty('--stroke','1.2px'); stroke.value=1.2; strokeV.textContent='1.2';
+    const t=TREES['tree']; if(t){
+      t.opts.zoom = 1; document.getElementById('zoom').value=100; document.getElementById('zoom-val').textContent='100%';
+      t.opts.pxPerUnit = 900; document.getElementById('width').value=900; document.getElementById('width-val').textContent='900 px/单位距离';
+      t.state = layoutPhylo(t.root, {margin:{top:10,bottom:10,left:10,right:10}});
+      renderPhylo(t.box, t.root, t.state, t.opts);
+      updateMeta();
+    }
+  };
+});
+</script>
+</body>
+</html>
