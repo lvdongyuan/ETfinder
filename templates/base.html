@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>{% block title %}ETfinder2{% endblock %}</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+  {% block extra_head %}{% endblock %}
+</head>
+<body class="{{ body_class|default('') }}">
+  {% block site_header %}
+  <header class="site-header">
+    <div class="container header-inner">
+      <a class="brand" href="{{ url_for('index') }}" aria-label="ETfinder Home">
+        <picture>
+          <source srcset="{{ url_for('static', filename='img/logo.svg') }}" type="image/svg+xml">
+          <img src="{{ url_for('static', filename='img/logo.png') }}"
+               alt="ETfinder" width="140" height="32" decoding="async" loading="eager">
+        </picture>
+      </a>
+      <nav class="site-nav"></nav>
+    </div>
+  </header>
+  {% endblock %}
+
+  <div class="container {{ container_class|default('') }}">
+    {% block content %}{% endblock %}
+  </div>
+  {% block extra_js %}{% endblock %}
+</body>
+</html>

@@ -1,0 +1,640 @@
+{% extends "base.html" %}
+{% set body_class = "wide" %}
+{% set container_class = "wide" %}
+{% block title %}Task {{ task_id }} · Result + SSAP/SSB Context Viewer{% endblock %}
+
+{% block content %}
+<h1>Task {{ task_id }} · {{ 'Success' if status == 'done' else 'Failed' }}</h1>
+
+{% if status == 'done' %}
+  <div class="row">
+    <span class="chip">suffix={{ result.suffix }}</span>
+    <span class="chip">mode={{ result.mode }}</span>
+    {% if result.target %}<span class="chip">target={{ result.target }}</span>{% endif %}
+    {% if result.ssap_k is defined %}<span class="chip">K={{ result.ssap_k }}</span>{% endif %}
+  </div>
+
+  <!-- Downloads -->
+  <div class="card">
+    <h2>Downloads</h2>
+    <div class="row">
+      {% if clusters_url %}
+        <a class="btn" href="{{ clusters_url }}" target="_blank">Results.json</a>
+      {% endif %}
+      {% if index_sorted_group_url %}
+        <a class="btn" href="{{ index_sorted_group_url }}" target="_blank">Results.tsv</a>
+      {% endif %}
+      {% if index_sorted_ctx_url %}
+        <a class="btn" href="{{ index_sorted_ctx_url }}" target="_blank">Results+ctx.tsv</a>
+      {% endif %}
+      {% if ssap_url %}
+        <a class="btn" href="{{ ssap_url }}" target="_blank">SSAP tree.nwk</a>
+      {% endif %}
+      {% if taxon_url %}
+        <a class="btn" href="{{ taxon_url }}" target="_blank">Taxon tree.nwk</a>
+      {% endif %}
+      {% if fasta_tags_url %}
+        <a class="btn" href="{{ fasta_tags_url }}" target="_blank">Candidates.fasta</a>
+      {% endif %}
+      {% if log_url %}
+        <a class="btn" href="{{ log_url }}" target="_blank">Log</a>
+      {% endif %}
+    </div>
+  </div>
+
+  <!-- Interactive Trees -->
+  <section class="card" style="margin-top:18px;">
+    <div class="title" style="margin-bottom:10px;">Interactive Trees</div>
+
+    <div class="trees-grid">
+      <div class="tree-card">
+        <div class="tree-head">
+          <strong>SSAP tree</strong>
+          <div class="tree-actions">
+            <button class="btn" onclick="fitTree('ssap_tree')">Fit</button>
+          </div>
+        </div>
+        <div id="ssap_tree" class="tree-container"></div>
+        {% if not ssap_url %}<p class="muted">No SSAP tree file was produced.</p>{% endif %}
+      </div>
+
+      <div class="tree-card">
+        <div class="tree-head">
+          <strong>Taxon tree</strong>
+          <div class="tree-actions">
+            <button class="btn" onclick="fitTree('taxon_tree')">Fit</button>
+          </div>
+        </div>
+        <div id="taxon_tree" class="tree-container"></div>
+        {% if not taxon_url %}<p class="muted">No Taxon tree file was produced.</p>{% endif %}
+      </div>
+    </div>
+  </section>
+
+  <!-- =================== Embedded SSAP/SSB Context Viewer =================== -->
+  <section class="card" style="margin-top:18px;" id="viewer">
+    <h2>RecT Context Viewer</h2>
+
+    <!-- Filters -->
+    <div class="filters card row">
+      <label class="row">
+        <input type="checkbox" id="filter-ssb">
+        <span>SSB (PF00436.28_SSB)</span>
+      </label>
+      <label class="row">
+        <input type="checkbox" id="filter-exo">
+        <span>Exonuclease partner (PF12684.10_DUF3799 / PF12705.10_PDDEXK_1 / PF09588.13_YqaJ)</span>
+      </label>
+      <span class="muted" style="margin-left:auto;">Checked items are required; checking both means “must have both”.</span>
+    </div>
+
+    {% if not clusters %}
+      <p class="muted">No data.</p>
+    {% endif %}
+
+    {# 有排序对儿就用它；否则回退 clusters.items()；都没有就空列表 #}
+    {% set iter_clusters = (clusters_pairs | default([])) or ((clusters | default({})).items()) %}
+    {% for cl_name, cl in iter_clusters %}
+      {% set rep = cl.get('rep') %}
+      {% set members = cl.get('members', []) %}
+
+      {# -------- collect PFAM tags (rep + members) -------- #}
+      {% set pfams = [] %}
+      {% macro add_pfams_from_ctx(ctx) -%}
+        {%- if ctx and ctx.get('context_elements') -%}
+          {%- for row in ctx['context_elements'] -%}
+            {%- for pf in row -%}
+              {%- if pf not in pfams -%}{%- set _ = pfams.append(pf) -%}{%- endif -%}
+              {%- if "/" in pf -%}
+                {%- for tok in pf.split("/") -%}
+                  {%- set t = tok.strip() -%}
+                  {%- if t and t not in pfams -%}{%- set _ = pfams.append(t) -%}{%- endif -%}
+                {%- endfor -%}
+              {%- endif -%}
+            {%- endfor -%}
+          {%- endfor -%}
+        {%- endif -%}
+      {%- endmacro %}
+
+      {% if rep %}{{ add_pfams_from_ctx(rep.get('ctx')) }}{% endif %}
+      {% for m in members %}{{ add_pfams_from_ctx(m.get('ctx')) }}{% endfor %}
+
+      {% set has_ssb = 'PF00436.28_SSB' in pfams %}
+      {% set exo_list = ['PF12684.10_DUF3799','PF12705.10_PDDEXK_1','PF09588.13_YqaJ'] %}
+      {% set has_exo = (exo_list[0] in pfams) or (exo_list[1] in pfams) or (exo_list[2] in pfams) %}
+
+      <section class="cluster section" id="{{ cl_name }}" data-has-ssb="{{ 1 if has_ssb else 0 }}" data-has-exo="{{ 1 if has_exo else 0 }}">
+        <div class="row" style="align-items:baseline; gap:12px;">
+          <h3 style="margin:0;">{{ cl_name }}</h3>
+          <span class="chip">rep: {{ cl_name }}-{{ rep.number if rep and rep.number is not none else '?' }}</span>
+          {% if rep %}<span class="chip">ID: {{ rep.id }}</span>{% endif %}
+          <span class="chip">rep identity: {{ rep.identity if rep and rep.identity is not none else '-' }}</span>
+          <span class="chip">{{ members|length }} members</span>
+          {% if has_ssb %}<span class="chip ok">SSB</span>{% endif %}
+          {% if has_exo %}<span class="chip ok">Exo</span>{% endif %}
+        </div>
+
+        <!-- ===== Representative ===== -->
+        {% if rep and rep.get('ctx') %}
+          {# 代表的 GCF：优先 rep.gcfs；否则用服务器传入的 wp2gcf[rep.id] #}
+          {% set rep_gcfs = [] %}
+          {% if rep.gcfs is defined and rep.gcfs %}{% set rep_gcfs = rep.gcfs %}
+          {% elif rep.id and wp2gcf %}{% set rep_gcfs = wp2gcf.get(rep.id, []) %}
+          {% endif %}
+
+          <details id="{{ cl_name }}-{{ rep.number if rep and rep.number is not none else 'rep' }}" open>
+            <summary class="summary">Representative · ID: <span class="mono">{{ rep.id }}</span></summary>
+
+            {% if rep_gcfs %}
+              <div class="row" style="gap:6px; margin:6px 0;">
+                <span class="chip">origin: {{ rep_gcfs|join(', ') }}</span>
+                <button class="btn btn-sm" onclick="copyText({{ (rep_gcfs|join(' '))|tojson }})">Copy GCF</button>
+              </div>
+            {% endif %}
+
+            {# one-line list of PFAMs for rep #}
+            {% set rep_pf = [] %}
+            {% if rep.ctx.get('context_elements') %}
+              {% for row in rep.ctx['context_elements'] %}
+                {% for pf in row %}
+                  {% if pf not in rep_pf %}{% set _ = rep_pf.append(pf) %}{% endif %}
+                {% endfor %}
+              {% endfor %}
+            {% endif %}
+            {% if rep_pf %}
+              <div class="row" style="gap:6px; margin:8px 0;">
+                {% for pf in rep_pf %}<span class="pfam">{{ pf }}</span>{% endfor %}
+              </div>
+            {% endif %}
+
+            <!-- horizontal context strip -->
+            <div class="ctx-strip">
+              {% for key in ['ctx_-2','ctx_-1','ctx_0','ctx_+1','ctx_+2'] %}
+                {% if rep.ctx.get(key) %}
+                  <div class="ctx-card">
+                    <div class="ctx-head">
+                      <span class="ctx-title">{{ "RecT" if key == "ctx_0" else key }}</span>
+                      <button class="btn btn-sm" onclick="copyPre(this)">Copy FASTA</button>
+                    </div>
+<pre class="ctx-pre">{%- for entry in rep.ctx[key] -%}
+>{{ entry.get('accession','NA') }} {{ entry.get('description','')|dedupe_desc(entry.get('accession','')) }}
+{{ entry.get('sequence','') | wrap60 }}
+{%- endfor -%}</pre>
+                  </div>
+                {% endif %}
+              {% endfor %}
+            </div>
+          </details>
+        {% else %}
+          <p class="muted">(no representative context)</p>
+        {% endif %}
+
+        <!-- ===== Members ===== -->
+        {% if members %}
+          <details>
+            <summary class="summary">Members ({{ members|length }})</summary>
+            {% for m in members %}
+              {# 成员的 GCF：优先 m.gcfs；否则 wp2gcf[m.id] #}
+              {% set m_gcfs = [] %}
+              {% if m.gcfs is defined and m.gcfs %}{% set m_gcfs = m.gcfs %}
+              {% elif m.id and wp2gcf %}{% set m_gcfs = wp2gcf.get(m.id, []) %}
+              {% endif %}
+
+              <div class="card soft" id="{{ cl_name }}-{{ m.number if m.number is not none else 'm' }}" style="margin-top:10px;">
+                <div class="row" style="gap:8px; flex-wrap:wrap;">
+                  <span class="chip">id: {{ cl_name }}-{{ m.number if m.number is not none else '?' }}</span>
+                  <span class="chip">ID: {{ m.id }}</span>
+                  <span class="chip">identity: {{ m.identity if m.identity is not none else '-' }}</span>
+                  {% if m_gcfs %}
+                    <span class="chip">origin: {{ m_gcfs|join(', ') }}</span>
+                    <button class="btn btn-sm" onclick="copyText({{ (m_gcfs|join(' '))|tojson }})">Copy GCF</button>
+                  {% endif %}
+                </div>
+
+                {% if m.get('ctx') %}
+                  {% set m_pf = [] %}
+                  {% if m.ctx.get('context_elements') %}
+                    {% for row in m.ctx['context_elements'] %}
+                      {% for pf in row %}
+                        {% if pf not in m_pf %}{% set _ = m_pf.append(pf) %}{% endif %}
+                      {% endfor %}
+                    {% endfor %}
+                  {% endif %}
+                  {% if m_pf %}
+                    <div class="row" style="gap:6px; margin:8px 0;">
+                      {% for pf in m_pf %}<span class="pfam">{{ pf }}</span>{% endfor %}
+                    </div>
+                  {% endif %}
+
+                  <div class="ctx-strip">
+                    {% for key in ['ctx_-2','ctx_-1','ctx_0','ctx_+1','ctx_+2'] %}
+                      {% if m.ctx.get(key) %}
+                        <div class="ctx-card">
+                          <div class="ctx-head">
+                          <span class="ctx-title">{{ "RecT" if key == "ctx_0" else key }}</span>
+                          <button class="btn btn-sm" onclick="copyPre(this)">Copy FASTA</button>
+  </div>
+<pre class="ctx-pre">{%- for entry in m.ctx[key] -%}
+>{{ entry.get('accession','NA') }} {{ entry.get('description','')|dedupe_desc(entry.get('accession','')) }}
+{{ entry.get('sequence','') | wrap60 }}
+{%- endfor -%}</pre>
+                        </div>
+                      {% endif %}
+                    {% endfor %}
+                  </div>
+                {% else %}
+                  <p class="muted">(no context)</p>
+                {% endif %}
+              </div>
+            {% endfor %}
+          </details>
+        {% endif %}
+      </section>
+    {% endfor %}
+  </section>
+
+  <!-- Local CSS for trees + context viewer -->
+  <style>
+    .trees-grid{display:grid;grid-template-columns:1fr 1fr;gap:18px;}
+    @media (max-width:1200px){.trees-grid{grid-template-columns:1fr;}}
+    .tree-card{
+      background:rgba(255,255,255,.03);
+      border:1px solid rgba(255,255,255,.08);
+      border-radius:14px;
+      padding:12px 12px 6px;
+    }
+    .tree-head{display:flex;align-items:center;justify-content:space-between;margin:6px 6px 12px;}
+    .tree-head strong{font-size:20px;letter-spacing:.2px;}
+    .tree-actions{display:flex;gap:8px;}
+    .btn{padding:6px 10px;border-radius:10px;border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.06);color:#cfd6e4;cursor:pointer;}
+    .btn:hover{background:rgba(255,255,255,.1);}
+    .btn.btn-sm{ padding:4px 8px; font-size:.9em; }
+    .tree-container{
+      width:100%;
+      height:860px;
+      overflow:auto;
+      background:rgba(0,0,0,.15);
+      border-radius:10px;
+      padding:8px;
+    }
+    .muted{color:#9aa3b2;font-size:.95em;}
+    .support-label{
+      font: 11px/1.1 ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+      fill: #9aa3b2; pointer-events: none;
+    }
+    .branch{stroke:#9fb1c7;stroke-width:1.2px;fill:none;stroke-linecap:round; pointer-events:none;}
+    .tree-label{
+      font:14px/1.28 ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+      fill:#cfd6e4; cursor:text;
+      user-select:text; -webkit-user-select:text;
+    }
+    .tree-label.hover{
+      fill:#facc15; font-weight:700;
+      paint-order:stroke; stroke:rgba(0,0,0,.35); stroke-width:.9px;
+    }
+    .hit-zone{ fill:transparent; pointer-events:auto; }
+
+    /* ===== Context Viewer styles ===== */
+    .ctx-strip{
+      display:grid;
+      grid-template-columns: repeat(5, minmax(280px, 1fr));
+      gap:12px;
+      margin-top:10px;
+    }
+    @media (max-width:1500px){
+      .ctx-strip{ grid-template-columns: repeat(3, minmax(280px, 1fr)); }
+    }
+    @media (max-width:980px){
+      .ctx-strip{ grid-template-columns: repeat(2, minmax(260px, 1fr)); }
+    }
+    .ctx-card{
+      border:1px solid var(--border);
+      background: color-mix(in srgb, var(--card) 94%, black 6%);
+      border-radius:12px; padding:10px;
+    }
+    .ctx-head{ display:flex; align-items:center; justify-content:space-between; margin-bottom:8px; }
+    .ctx-title{ font-weight:600; letter-spacing:.2px; }
+
+    .ctx-pre{
+      max-height: 320px;
+      overflow:auto;
+      margin:0;
+    }
+    .pfam{ display:inline-block; padding:2px 6px; font-size:12px; border-radius:6px;
+           background:#eef2ff; color:#3730a3; }
+    .filters.card{ padding:10px; gap:10px; }
+
+    /* 点击树叶后目标元素闪烁高亮 */
+    @keyframes flashfade {
+      0%   { background-color: rgba(250, 204, 21, .25); outline: 2px solid #facc15; }
+      100% { background-color: transparent; outline-color: transparent; }
+    }
+    .flash {
+      animation: flashfade 2s ease-out;
+      transition: background-color .6s ease, outline-color .6s ease;
+      scroll-margin-top: 80px;
+    }
+    .back-to-top {
+      position: fixed;
+      right: 24px;
+      bottom: 24px;
+      z-index: 999;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity .3s ease;
+    }
+    .back-to-top.visible {
+      opacity: 1;
+      pointer-events: auto;
+    }
+  </style>
+
+  <!-- 注入 URL for trees -->
+  <script id="init-data" type="application/json">
+    {{ {'ssap_url': ssap_url | default(none),
+        'taxon_url': taxon_url | default(none)} | tojson }}
+  </script>
+
+  <!-- JS for trees + viewer -->
+  <script>
+    /* ========= Newick parsing & tree rendering ========= */
+    function parseNewick(s){
+      s = String(s||'').trim(); if(!/;\s*$/.test(s)) s+=';';
+      let i=0, ch=()=>s[i], next=()=>s[i++]; function skip(){ while(/\s/.test(ch())) i++; }
+      function readBracket(){ if(ch()!='[') throw Error('expect ['); next(); let buf='',q=false;
+        while(i<s.length){ const c=next(); if(c=="'"){ q=!q; buf+=c; continue; } if(!q && c==']') break; buf+=c; } return buf; }
+      function readNum(){ skip(); let t=''; while(/[0-9eE\.\+\-]/.test(ch())) t+=next(); const v=parseFloat(t); return isFinite(v)?v:0; }
+      function readLabelAndAnnos(){ skip(); let label='', annos=[], q=false;
+        while(i<s.length){ const c=ch(); if(c=="'"){ q=!q; label+=next(); continue; }
+          if(!q && (c==':'||c==','||c==')'||c=='('||c==';'||c=='[')){
+            if(c=='['){ const blk=readBracket(); if(blk[0]=='&'){ annos.push(blk); continue; } else { label+='['+blk+']'; continue; } }
+            break; }
+          label+=next();
+        }
+        skip(); while(ch()=='['){ const blk=readBracket(); if(blk[0]=='&') annos.push(blk); skip(); }
+        return [label.trim(), annos];
+      }
+      const node=()=>({name:'',length:0,children:[],parent:null,_x:0,_y:0,annos:[],display:'',support:''});
+      if(ch()!='(') throw Error('Newick must start with ('); next();
+      const stack=[], root=node(); let cur=root;
+      function addChild(n){ n.parent=cur; cur.children.push(n); }
+      while(i<s.length){
+        skip(); const c=ch();
+        if(c=='('){ const n=node(); addChild(n); stack.push(cur); cur=n; next(); }
+        else if(c==','){ next(); }
+        else if(c==')'){ next(); skip();
+          if(ch() && ch()!=':' && ch()!=',' && ch()!=')' && ch()!=';'){ const [nm,ann]=readLabelAndAnnos(); cur.name=nm; cur.annos=ann; }
+          if(ch()==':'){ next(); cur.length=readNum(); }
+          cur=stack.pop()||cur;
+        }
+        else if(c==';'){ break; }
+        else{ const [nm,ann]=readLabelAndAnnos(); const leaf=node(); leaf.name=nm; leaf.annos=ann; if(ch()==':'){ next(); leaf.length=readNum(); } addChild(leaf); }
+      }
+      const real = root.children.length===1 ? (root.children[0].parent=null, root.children[0]) : root;
+      function stripAnnos(label){ return (label||'').replace(/\[\&[^]*?\]/g,'').trim(); }
+      function isNumericSupportToken(tok){
+        if(!tok) return false;
+        const t = tok.replace(/^'(.*)'$/,'$1').trim();
+        if(/^\d+(\.\d+)?%$/.test(t)) return true;
+        if(/^\d+(\.\d+)?$/.test(t)){
+          const v = parseFloat(t);
+          return (v>=0 && v<=1) || (v>=1 && v<=1000);
+        }
+        return false;
+      }
+      (function post(n){
+        const bare = stripAnnos(n.name);
+        if(n.children.length){
+          if(isNumericSupportToken(bare)){ n.support = bare; n.display = ''; }
+          else{ n.display = bare; }
+        }else{
+          n.display = bare;
+        }
+        n.children.forEach(post);
+      })(real);
+      return real;
+    }
+    function extractAnno(label){
+      if(!label) return '';
+      const m = label.match(/\[\&[^]*?\]/g); if(!m) return '';
+      return m.map(s=>s.replace(/^\[\&\??/,'').replace(/\]$/,'')).join(' | ');
+    }
+    function layoutTree(root, opts={}){
+      const rowH = opts.rowH || 22;
+      const margin = opts.margin || {top:10,bottom:10,left:10,right:10};
+      const leaves=[]; (function collect(n){ if(!n.children.length){ leaves.push(n); return; } n.children.forEach(collect); })(root);
+      leaves.forEach((n,i)=> n._y = margin.top + i*rowH);
+      (function setY(n){ if(n.children.length){ n.children.forEach(setY); const ys=n.children.map(c=>c._y); n._y=(Math.min(...ys)+Math.max(...ys))/2; } })(root);
+      function maxDepth(n, acc){ const here=acc+(n.length||0); if(!n.children.length) return here; return Math.max(...n.children.map(c=>maxDepth(c,here))); }
+      const maxLen = Math.max(1e-6, maxDepth(root,0));
+      return {leaves,maxLen,rowH,margin};
+    }
+    function renderSVG(container, root, state){
+      const W = container.clientWidth - 16;
+      const H = Math.max(container.clientHeight, state.margin.top + state.leaves.length*state.rowH + state.margin.bottom);
+      container.innerHTML='';
+      const svg = document.createElementNS('http://www.w3.org/2000/svg','svg');
+      svg.setAttribute('width', W); svg.setAttribute('height', H);
+      container.appendChild(svg);
+      const leftPad=14, rightPad=320;
+      const scaleX = (x)=> leftPad + (W - leftPad - rightPad) * (x / state.maxLen);
+      function setX(n, acc){ const x=acc+(n.length||0); n._x=scaleX(x); if(n.children.length) n.children.forEach(c=>setX(c,x)); }
+      root._x = leftPad; root.children.forEach(c=>setX(c,0));
+      function addPath(d){ const p=document.createElementNS(svg.namespaceURI,'path'); p.setAttribute('class','branch'); p.setAttribute('d',d); svg.appendChild(p); }
+      function draw(n){
+        if(n.children.length){
+          const ys = n.children.map(c=>c._y);
+          addPath(`M ${n._x} ${Math.min(...ys)} L ${n._x} ${Math.max(...ys)}`);
+          n.children.forEach(c=>{ addPath(`M ${n._x} ${c._y} L ${c._x} ${c._y}`); draw(c); });
+          if(n.support){
+            const sup = document.createElementNS(svg.namespaceURI,'text');
+            sup.setAttribute('x', n._x - 6);
+            sup.setAttribute('y', n._y + 3);
+            sup.setAttribute('text-anchor', 'end');
+            sup.setAttribute('class', 'support-label');
+            sup.textContent = n.support;
+            svg.appendChild(sup);
+          }
+          if(n.display){
+            const t = document.createElementNS(svg.namespaceURI,'text');
+            t.setAttribute('x', n._x + 6); t.setAttribute('y', n._y + 4);
+            t.setAttribute('class','tree-label');
+            t.textContent = n.display;
+            svg.appendChild(t);
+          }
+        }else{
+          const text = n.display; if(!text) return;
+          const lineTop = n._y - state.rowH/2, lineH = state.rowH;
+          const textX = n._x + 6, textY = n._y + 4;
+          const t = document.createElementNS(svg.namespaceURI,'text');
+          t.setAttribute('x', textX); t.setAttribute('y', textY);
+          t.setAttribute('class','tree-label');
+          t.textContent = text;
+          const annoTitle = extractAnno(n.name);
+          if(annoTitle){ const tt=document.createElementNS(svg.namespaceURI,'title'); tt.textContent=annoTitle; t.appendChild(tt); }
+          svg.appendChild(t);
+          const bb = t.getBBox();
+          const bindHover = (el)=>{
+            el.addEventListener('mouseenter', ()=> t.classList.add('hover'));
+            el.addEventListener('mouseleave', ()=> t.classList.remove('hover'));
+          };
+          const leftHit = document.createElementNS(svg.namespaceURI,'rect');
+          const lx = Math.max(0, n._x - 8);
+          const lw = Math.max(0, bb.x - 4 - lx);
+          leftHit.setAttribute('x', lx);
+          leftHit.setAttribute('y', lineTop);
+          leftHit.setAttribute('width', lw);
+          leftHit.setAttribute('height', lineH);
+          leftHit.setAttribute('class','hit-zone');
+          bindHover(leftHit);
+          svg.insertBefore(leftHit, t);
+          const rightHit = document.createElementNS(svg.namespaceURI,'rect');
+          const rx = bb.x + bb.width + 4;
+          const rw = Math.max(0, (W - 6) - rx);
+          rightHit.setAttribute('x', rx);
+          rightHit.setAttribute('y', lineTop);
+          rightHit.setAttribute('width', rw);
+          rightHit.setAttribute('height', lineH);
+          rightHit.setAttribute('class','hit-zone');
+          bindHover(rightHit);
+          svg.appendChild(rightHit);
+          bindHover(t);
+
+          // 点击叶子 -> 跳转到对应卡片/区块
+          const trigger = ()=> jumpToByLeafLabel(text);
+          [t, leftHit, rightHit].forEach(el=>{
+            if(!el) return;
+            el.style.cursor = 'pointer';
+            el.addEventListener('click', trigger);
+          });
+        }
+      }
+      draw(root);
+    }
+
+    // 解析叶子：取 '|' 左边（如 "CL24-0|'xxx'"} -> "CL24-0"）
+    function parseLeafKey(label){
+      const raw = String(label || '');
+      const noAnnos = raw.replace(/\[\&[^]*?\]/g, '');
+      const left = noAnnos.split('|', 1)[0].trim();
+      const token = left.replace(/^'+|'+$/g, '');
+      const m = token.match(/^(CL\d+)(?:-(\d+))?$/i);
+      return { token, cluster: m ? m[1] : token, idx: m && m[2] !== undefined ? parseInt(m[2],10) : null };
+    }
+    function flash(el){
+      if(!el) return;
+      el.classList.remove('flash'); void el.offsetWidth;
+      el.classList.add('flash');
+      setTimeout(()=> el.classList && el.classList.remove('flash'), 2200);
+    }
+    function jumpToByLeafLabel(label){
+      const key = parseLeafKey(label);
+      let el = key.idx !== null ? document.getElementById(key.token) : null;
+      if(!el) el = document.getElementById(key.cluster);
+      if(el){
+        const clusterSec = el.closest('section.cluster') || document.getElementById(key.cluster);
+        if(clusterSec){ clusterSec.querySelectorAll('details').forEach(d=> d.setAttribute('open','')); }
+        const parentDetails = el.closest('details'); if(parentDetails) parentDetails.setAttribute('open','');
+        el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        flash(el);
+      }else{
+        console.warn('No target element for leaf:', label);
+      }
+    }
+
+    const TREES = {};
+    async function loadAndRender(url, id){
+      const box = document.getElementById(id);
+      if(!url){ box.innerHTML = "<p class='muted'>No URL.</p>"; return; }
+      try{
+        const r = await fetch(url);
+        if(!r.ok) throw new Error('HTTP '+r.status);
+        const txt = await r.text();
+        const root = parseNewick(txt);
+        const state = layoutTree(root, {rowH:22, margin:{top:10,bottom:10,left:10,right:10}});
+        TREES[id] = {root,state,box};
+        renderSVG(box, root, state);
+      }catch(e){
+        console.error("Failed to render tree", id, e);
+        box.innerHTML = `<div class="muted">Render failed: ${e && e.message ? e.message : e}</div>`;
+      }
+    }
+    function fitTree(id){
+      const t = TREES[id]; if(!t) return;
+      const leaves=[]; (function collect(n){ if(!n.children.length){leaves.push(n);return;} n.children.forEach(collect); })(t.root);
+      const targetH = Math.max(560, 10 + leaves.length*t.state.rowH + 10);
+      t.box.style.height = Math.min(1600, targetH) + 'px';
+      t.state = layoutTree(t.root, t.state);
+      renderSVG(t.box, t.root, t.state);
+    }
+    window.addEventListener('load', ()=>{
+      const init = JSON.parse(document.getElementById('init-data').textContent);
+      loadAndRender(init.ssap_url,  "ssap_tree");
+      loadAndRender(init.taxon_url, "taxon_tree");
+    });
+
+    /* ========= Viewer helpers ========= */
+    function copyPre(btn) {
+      const pre = btn.closest('.ctx-card').querySelector('pre');
+      let text = pre.innerText.replace(/[ \t]+$/gm, "").replace(/\n{3,}/g, "\n\n").trim();
+      navigator.clipboard.writeText(text).then(()=>{
+        const old = btn.textContent;
+        btn.textContent = "Copied";
+        setTimeout(()=>btn.textContent = old, 900);
+      }).catch(()=>{
+        const old = btn.textContent;
+        btn.textContent = "Copy failed";
+        setTimeout(()=>btn.textContent = old, 900);
+      });
+    }
+    function copyText(txt){
+      navigator.clipboard.writeText(String(txt || '')).catch(()=>{});
+    }
+
+    const cbSSB = document.getElementById("filter-ssb");
+    const cbExo = document.getElementById("filter-exo");
+    function applyFilter(){
+      const needSSB = cbSSB.checked, needExo = cbExo.checked;
+      document.querySelectorAll(".cluster").forEach(el=>{
+        const okSSB = el.dataset.hasSsb === "1";
+        const okExo = el.dataset.hasExo === "1";
+        let show = true;
+        if (needSSB && !okSSB) show = false;
+        if (needExo && !okExo) show = false;
+        el.style.display = show ? "" : "none";
+      });
+    }
+    if(cbSSB && cbExo){
+      cbSSB.addEventListener("change", applyFilter);
+      cbExo.addEventListener("change", applyFilter);
+      applyFilter();
+    }
+    const backBtn = document.getElementById('backToTop');
+    if (backBtn) {
+      backBtn.addEventListener('click', () => {
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+      });
+      window.addEventListener('scroll', () => {
+        const y = window.scrollY || document.documentElement.scrollTop || 0;
+        if (y > 400) {
+          backBtn.classList.add('visible');
+        } else {
+          backBtn.classList.remove('visible');
+        }
+      });
+    }
+  </script>
+  <button id="backToTop" class="btn back-to-top" type="button">
+    Back to top
+  </button>
+  <p><a class="btn" href="/">Back to home</a></p>
+
+{% else %}
+  <div class="card">
+    <h2>Task failed</h2>
+    <pre class="mono">{{ result|tojson(indent=2) }}</pre>
+    {% if log_url %}<p><a class="btn" href="{{ log_url }}" target="_blank">Open log</a></p>{% endif %}
+    <p><a class="btn" href="/">Back to home</a></p>
+  </div>
+{% endif %}
+{% endblock %}

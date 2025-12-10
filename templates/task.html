@@ -1,0 +1,107 @@
+{% extends "base.html" %}
+{% set body_class = "wide" %}          {# or "full" #}
+{% set container_class = "wide" %}
+{% block title %}Task {{ task_id }} · Running{% endblock %}
+
+{% block content %}
+  <h1>Task <span class="mono">{{ task_id }}</span></h1>
+
+  <div class="row">
+    <span class="chip">suffix={{ params.suffix }}</span>
+    <span class="chip">mode={{ params.mode }}</span>
+    {% if params.target %}<span class="chip">target={{ params.target }}</span>{% endif %}
+    <span class="spinner" title="Running"></span>
+  </div>
+
+  <!-- Log panel: fixed height + inner scroll -->
+  <div class="card log-card">
+    <div class="log-toolbar">
+      <strong class="muted">Live log</strong>
+      <span class="dot"></span>
+      <button class="btn btn-sm" id="btn-clear" type="button">Clear</button>
+      <label class="muted" style="display:flex;align-items:center;gap:6px;user-select:none;">
+        <input id="stick-toggle" type="checkbox" checked>
+        Auto-scroll
+      </label>
+    </div>
+    <div id="log-box" class="log-box">
+      <pre id="log" class="mono"></pre>
+    </div>
+  </div>
+
+  <style>
+    /* Keep the log scrolling inside the card instead of stretching the page */
+    .log-card{ padding:12px; }
+    .log-toolbar{ display:flex; align-items:center; gap:10px; margin-bottom:8px; }
+    .dot{ width:8px; height:8px; border-radius:50%; background:#4ade80; box-shadow:0 0 10px #4ade80; }
+    .btn.btn-sm{ padding:4px 8px; font-size:.9em; }
+    .log-box{
+      height: 62vh;
+      min-height: 280px;
+      overflow: auto;              /* scrollbar on the outer container */
+      background: rgba(255,255,255,.03);
+      border: 1px solid rgba(255,255,255,.08);
+      border-radius: 10px;
+      padding: 10px;
+    }
+    #log{
+      margin: 0;
+      white-space: pre-wrap;       /* change to `pre` if you prefer horizontal scroll */
+      word-break: break-word;
+      line-height: 1.45;
+      font-size: 13px;
+      overflow: visible;           /* disable pre’s own scrolling */
+    }
+    .muted{ color:#9aa3b2; }
+  </style>
+
+  <script>
+    const logBox = document.getElementById('log-box');
+    const logEl  = document.getElementById('log');
+    const stickToggle = document.getElementById('stick-toggle');
+    const btnClear = document.getElementById('btn-clear');
+
+    // Are we already at the bottom? (allow 5px tolerance)
+    function atBottom(el){ return (el.scrollTop + el.clientHeight) >= (el.scrollHeight - 5); }
+
+    // Append a line. Auto-scroll only if currently at bottom OR auto-scroll is checked.
+    function appendLine(text){
+      const shouldStick = stickToggle.checked ? true : atBottom(logBox);
+
+      logEl.textContent += text + "\n";
+
+      // Simple truncation guard to avoid huge memory usage
+      if (logEl.textContent.length > 2_000_000) {
+        logEl.textContent = logEl.textContent.slice(-1_000_000);
+      }
+
+      if (shouldStick) {
+        // Wait for layout to finish so scrollHeight is updated
+        requestAnimationFrame(() => {
+          logBox.scrollTop = logBox.scrollHeight;
+        });
+      }
+    }
+
+    // Clear
+    btnClear.addEventListener('click', ()=> {
+      logEl.textContent = "";
+      logBox.scrollTop = 0;
+    });
+
+    // SSE live stream
+    const es = new EventSource("/stream/{{ task_id }}");
+    es.onmessage = (e) => appendLine(e.data);
+
+    es.addEventListener('done', () => {
+      es.close();
+      // Navigate to the result page
+      location.href = "/result/{{ task_id }}";
+    });
+
+    es.addEventListener('error', () => {
+      es.close();
+      appendLine("[ERROR] task failed.");
+    });
+  </script>
+{% endblock %}

@@ -1,0 +1,208 @@
+{% extends "base.html" %}
+{% set body_class = "wide" %}
+{% set container_class = "wide" %}
+{% block site_header %}{% endblock %}  {# 首页仍不显示左上角小logo #}
+{% block title %}ETfinder · SSAP/SSB Context{% endblock %}
+
+{% block content %}
+<style>
+  :root{
+    --bg: #0b0d12;
+    --muted: #9aa4b2;
+    --text: #e7ecf3;
+    --accent: #79ffe1;
+    --accent-2: #4ea1ff;
+    --ring: 0 0 0 3px rgba(121,255,225,.25);
+    --border: rgba(255,255,255,.10);
+    --logo-max: 880px;            /* ★ 控制最大logo宽度（可调） */
+  }
+  body{
+    background: radial-gradient(1200px 800px at 20% -10%, #1b2130 0%, #0b0d12 60%);
+    color: var(--text);
+  }
+
+  .page{
+    max-width: 1100px;
+    margin: 0 auto;
+    padding: 60px 18px 48px;
+    display: grid; gap: 28px;
+  }
+
+  /* ===== Hero ===== */
+  .hero{
+    display:grid; gap:18px; justify-items:center; text-align:center;
+    padding-top: 7vh;                    /* ★ 整体下移 */
+    margin-bottom: 2vh;
+  }
+  .logo-wrap{ display:flex; align-items:center; justify-content:center; }
+
+  /* 统一控制图片/SVG的宽度，防止被其它样式挤小 */
+  .logo{
+    width: min(92vw, var(--logo-max));   /* ★ 锁定尺寸 */
+    max-width: var(--logo-max);
+    height:auto;
+    filter: drop-shadow(0 10px 30px rgba(0,0,0,.45));
+  }
+  /* 如果用 PDF 嵌入时使用 */
+  .logo-pdf{
+    width: min(92vw, var(--logo-max));
+    max-width: var(--logo-max);
+    height: 220px;                       /* 估算高度，可按你的比例微调 */
+    border: none;
+    display:block;
+    filter: drop-shadow(0 10px 30px rgba(0,0,0,.45));
+  }
+
+  .tagline{
+    font-size: 30px;                     /* ★ 约2×原大小 */
+    line-height: 1.25;
+    color: var(--muted);
+    letter-spacing:.2px;
+    font-weight: 650;
+    margin-top: 6px;
+  }
+
+  /* ===== Card & form ===== */
+  .card{
+    background: linear-gradient(180deg, rgba(255,255,255,.03), rgba(255,255,255,.015));
+    background-color: rgba(6,8,14,.90);  /* ★ 更深更“若隐若现” */
+    border-radius: 18px;
+    border: 1px solid rgba(255,255,255,.08);
+    box-shadow: 0 26px 70px rgba(0,0,0,.55), inset 0 1px 0 rgba(255,255,255,.03);
+    padding: 26px;
+    backdrop-filter: blur(2px);
+  }
+  .form-grid{ display:grid; grid-template-columns: 1fr 1fr; gap:18px; }
+  @media (max-width: 820px){ .form-grid{ grid-template-columns: 1fr; } }
+
+  .field{ display:flex; flex-direction:column; gap:10px; }
+  .label-lg{ font-weight:800; font-size:14px; letter-spacing:.2px; }
+  .input-lg, .select-lg{
+    width:100%;
+    font-size:18px; font-weight:700; letter-spacing:.2px;
+    padding:16px 16px; border-radius:14px; color:var(--text);
+    border:1px solid rgba(255,255,255,.14);
+    background: rgba(255,255,255,.03);   /* ★ 更深 */
+    outline:none; transition:.15s;
+  }
+  .input-lg::placeholder{ color:#7f8aa1; font-weight:500; }
+  .input-lg:focus, .select-lg:focus{ box-shadow: var(--ring); border-color: var(--accent); }
+  .hint{ color: var(--muted); font-size:12px; margin-top:-6px; }
+
+  .btn-primary{
+    appearance:none; border:0; cursor:pointer;
+    background: linear-gradient(135deg, var(--accent) 0%, var(--accent-2) 100%);
+    color:#0b0d12; font-weight:900; letter-spacing:.3px;
+    padding: 14px 22px; border-radius: 14px; font-size: 16px;
+    transition: transform .05s ease-in-out, box-shadow .2s;
+    box-shadow: 0 10px 30px rgba(78,161,255,.25);
+  }
+  .btn-primary:hover{ transform: translateY(-1px); }
+
+  .row{ display:flex; gap:12px; align-items:center; flex-wrap:wrap; }
+
+  /* Advanced options */
+  details.adv{ border-top:1px dashed var(--border); padding-top:14px; margin-top:6px; }
+  details.adv > summary{
+    cursor:pointer; list-style:none; user-select:none; color:#a5adba;
+    display:flex; align-items:center; gap:8px; font-weight:600;
+  }
+  details.adv > summary::before{ content:"▸"; transition: transform .15s ease; font-size:14px; }
+  details.adv[open] > summary::before{ transform: rotate(90deg); }
+  .pill{ padding:8px 12px; border-radius:999px; border:1px solid var(--border); color:#a5adba; }
+</style>
+
+<div class="page">
+  <!-- ===== Hero ===== -->
+  <section class="hero">
+    <div class="logo-wrap">
+      <picture>
+        <source srcset="{{ url_for('static', filename='img/logo.svg') }}" type="image/svg+xml">
+        <img class="logo" alt="ETfinder logo"
+             src="{{ url_for('static', filename='img/logo.png') }}">
+      </picture>
+
+      {# 如需 PDF logo，取消注释下面这段，并注释掉上面的 <picture> 块 #}
+      {#
+      <object class="logo-pdf"
+              data="{{ url_for('static', filename='img/logo.pdf') }}"
+              type="application/pdf">
+        <img class="logo" alt="ETfinder logo"
+             src="{{ url_for('static', filename='img/logo.png') }}">
+      </object>
+      #}
+    </div>
+
+    <div class="tagline">A SSB-Ct-guided mining platform for RecET recombineering systems</div>
+  </section>
+
+  <!-- ===== Form ===== -->
+  <form class="card" action="{{ url_for('run_pipeline') }}" method="post" style="margin-top: 5vh;">  {# ★ 表单再往下 #}
+    <div class="form-grid">
+      <div class="field">
+        <label for="suffix" class="label-lg">SSB C-terminus (Suffix)</label>
+        <input id="suffix" name="suffix" class="input-lg" type="text"
+               placeholder="e.g. FDDEIPF" value="FDDEIPF" />
+        <div class="hint">Used to select SSB tails and name outputs.</div>
+      </div>
+
+      <div class="field">
+        <label for="target" class="label-lg">Target species (name or TaxID)</label>
+        <input id="target" name="target" class="input-lg" type="text"
+               placeholder="e.g. Bacillus subtilis or 224308" />
+        <div class="hint">Optional; used to compute distances on the taxon tree.</div>
+      </div>
+    </div>
+      <div class="field">
+        <label for="ssap_k">Number of RecT candidates (K)</label>
+        <input
+    type="number"
+    id="ssap_k"
+    name="ssap_k"
+    min="1"
+    step="1"
+    value="8"
+  />
+  <p class="muted">Used for stratified sampling on the RecT tree.</p>
+</div>
+    <details class="adv">
+    
+      <summary>Advanced options</summary>
+      <div class="form-grid" style="margin-top:14px;">
+        <div class="field">
+          <label class="label-lg">Mode</label>
+          <div class="row">
+            <label class="pill"><input type="radio" name="mode" value="rep" checked> rep (representatives only)</label>
+            <label class="pill"><input type="radio" name="mode" value="all"> all (representatives + members)</label>
+          </div>
+          <div class="hint">Controls which FASTA enters the SSAP tree (rep vs all).</div>
+        </div>
+
+        <div class="field">
+          <label for="iqtree_model" class="label-lg">IQ-TREE model</label>
+          <select id="iqtree_model" name="iqtree_model" class="select-lg">
+            <option value="MFP" selected>MFP (auto)</option>
+            <option value="JTT">JTT</option>
+            <option value="LG">LG</option>
+            <option value="WAG">WAG</option>
+            <option value="Dayhoff">Dayhoff</option>
+            <option value="VT">VT</option>
+            <option value="BLOSUM62">BLOSUM62</option>
+          </select>
+          <div class="hint">Substitution model passed to IQ-TREE with <code>-m</code>.</div>
+        </div>
+
+        <div class="field">
+          <label for="cdhit_c" class="label-lg">CD-HIT identity (-c)</label>
+          <input id="cdhit_c" name="cdhit_c" class="input-lg" type="number" step="0.01" min="0" max="1" value="0.90" />
+          <div class="hint">Clustering threshold for redundancy reduction.</div>
+        </div>
+      </div>
+    </details>
+
+    <div class="row" style="justify-content:center; margin-top:18px;">   {# ★ 居中按钮 #}
+      <button class="btn-primary" type="submit">RUN</button>
+    </div>
+  </form>
+</div>
+{% endblock %}
